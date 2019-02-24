@@ -7,13 +7,12 @@
 function run_update_cycle($pdo)
 {
     output('Running update cycle...');
-    
+
     // gather data to send to active servers
     $send = new stdClass();
     $send->artifact = artifact_location_select($pdo);
     $send->recent_pms = get_recent_pms($pdo);
     $send->recent_bans = bans_select_recent($pdo);
-    $send->campaign = levels_select_campaign($pdo);
     $send_str = json_encode($send);
 
     // send the data
@@ -24,7 +23,7 @@ function run_update_cycle($pdo)
     foreach ($servers as $server) {
         if ($server->result != false && $server->result != null) {
             $happy_hour = (int)$server->result->happy_hour;
-            output("$server->server_name (ID #$server->server_id) is up.");
+            output("(ID #$server->server_id) is up.");
             save_plays($pdo, $server->result->plays);
             save_gp($pdo, $server->server_id, $server->result->gp);
             server_update_status(
@@ -35,8 +34,7 @@ function run_update_cycle($pdo)
                 $happy_hour
             );
         } else {
-            $server_str = json_encode($server);
-            output("$server->server_name is down. Data: $server_str");
+            output("$server->server_id is down.");
             server_update_status($pdo, $server->server_id, 'down', 0, 0);
         }
     }
@@ -72,7 +70,7 @@ function write_server_status($pdo)
     output($display_str);
 
     file_put_contents(WWW_ROOT . '/files/server_status_2.txt', $display_str);
-    
+
     output('Server status output successful.');
 }
 
@@ -80,7 +78,7 @@ function write_server_status($pdo)
 function get_recent_pms($pdo)
 {
     $file = COMMON_DIR . '/cron/last-pm.txt';
-    
+
     // get the last message id that a notifacation was sent for
     $last_message_id = file_get_contents($file);
     if (!isset($last_message_id)) {
@@ -98,7 +96,7 @@ function get_recent_pms($pdo)
 
     // save the message id for next time
     file_put_contents($file, $last_message_id);
-    
+
     output("Wrote last message ID to $file.");
 
     // done
@@ -138,14 +136,14 @@ function update_artifact($pdo)
     $level_id = (int) $artifact->level_id;
     $updated_time = strtotime($artifact->updated_time);
     $first_finder = (int) $artifact->first_finder;
-    
+
     $level = level_select($pdo, $level_id);
     $title = $level->title;
     $user_id = (int) $level->user_id;
-    
+
     $user = user_select($pdo, $user_id);
     $user_name = $user->name;
-    
+
     if ($first_finder !== 0) {
         $finder = user_select($pdo, $first_finder);
         $finder_name = $finder->name;
@@ -175,7 +173,7 @@ function update_artifact($pdo)
         while ($arr[$index] === '_') {
             $index++;
             $index = $index >= $len ? 0 : $index;
-    
+
             $loops++;
             if ($loops > 100) {
                 output('Infinite loop triggered, breaking...');
@@ -185,15 +183,15 @@ function update_artifact($pdo)
         $arr[$index] = '_';
         $hide_characters--;
     }
-    
-    
+
+
     // tell it to the world
     $r = new stdClass();
     $r->hint = join('', $arr);
     $r->finder_name = $finder_name;
     $r->updated_time = $updated_time;
     $r_str = json_encode($r);
-    
+
     file_put_contents(WWW_ROOT . '/files/artifact_hint.txt', $r_str);
     output($r->hint);
 }
@@ -218,6 +216,56 @@ function failover_servers($pdo)
 }
 
 
+function set_campaign($pdo)
+{
+    output("Starting campaign update process...");
+
+    // get campaign data
+    $send = new stdClass();
+    $send->campaign = campaign_select($pdo);
+    $send = json_encode($send);
+
+    // send update function to the servers
+    $servers = servers_select($pdo);
+    foreach ($servers as $server) {
+        output("Updating campaign on $server->server_name (ID: #$server->server_id)...");
+        try {
+            $reply = talk_to_server($server->address, $server->port, $server->salt, "set_campaign`$send", true, false);
+            output("Reply: $reply");
+            output("$server->server_name (ID #$server->server_id) campaign update successful.");
+        } catch (Exception $e) {
+            output($e->getMessage());
+        }
+    }
+
+    // tell the command line
+    output('Campaign update complete.');
+}
+
+
+function ensure_awards($pdo)
+{
+    // select all records, they get cleared out weekly or somesuch
+    $awards = part_awards_select_list($pdo);
+
+    // give users their awards
+    foreach ($awards as $row) {
+        $part = (int) $row->part === 0 ? '*' : $row->part;
+        $type = $row->type;
+        $user_id = (int) $row->user_id;
+        try {
+            award_part($pdo, $user_id, $type, $part, false);
+            echo "user_id: $user_id, type: $type, part: $part \n";
+        } catch (Exception $e) {
+            echo "Error: $e \n";
+        }
+    }
+
+    // delete older records
+    part_awards_delete_old($pdo);
+}
+
+
 function servers_restart_all($pdo)
 {
     // tell the command line
@@ -226,7 +274,7 @@ function servers_restart_all($pdo)
 
     // grab active servers
     $servers = servers_select($pdo);
-    
+
     // shut down all active servers
     foreach ($servers as $server) {
         output("Shutting down $server->server_name (ID: #$server->server_id)...");
@@ -251,20 +299,23 @@ function delete_old_accounts($pdo)
 
     // get data
     $users = users_select_old($pdo);
-    
+    $nopr2 = users_select_no_pr2($pdo);
+
     // tell the world
-    $num_users = number_format(count($users));
-    output("$num_users accounts meet the time criteria for deletion.");
+    $num_users = number_format(count($users) + count($nopr2));
+    $lang = $num_users === '1' ? 'account meets' : 'accounts meet';
+    output("$num_users $lang the criteria for deletion.");
 
     // count
     $spared = 0;
     $deleted = 0;
-    
-    // delete or spare
+
+    // delete or spare users with pr2 data
+    output('Now processing users with pr2 data...');
     foreach ($users as $row) {
-        $user_id = $row->user_id;
-        $rank = $row->rank;
-        $play_count = user_select_level_plays($pdo, $user_id);
+        $user_id = (int) $row->user_id;
+        $rank = (int) $row->rank;
+        $play_count = user_select_level_plays($pdo, $user_id, true);
 
         $str = "$user_id has $play_count level plays and is rank $rank.";
         if ($play_count > 100 || $rank > 15) {
@@ -277,7 +328,19 @@ function delete_old_accounts($pdo)
             $deleted++;
         }
     }
-    
+    output('Processing for users with pr2 data finished.');
+
+    // delete or spare users without pr2 data
+    output('Now processing users without pr2 data...');
+    foreach ($nopr2 as $row) {
+        $user_id = (int) $row->user_id;
+        output("$user_id has no pr2 data. DELETING...");
+        user_delete($pdo, $user_id);
+        output("$user_id was successfully deleted.");
+        $deleted++;
+    }
+    output('Processing for users without pr2 data finished.');
+
     // tell the world
     $t_elapsed = time() - $start_time;
     $time = format_duration($t_elapsed);
@@ -308,7 +371,7 @@ function fah_update($pdo)
     if ($stats === false) {
         throw new Exception('Could not fetch FAH stats.');
     }
-    
+
     // award prizes
     foreach ($stats->users as $user) {
         fah_award_prizes($pdo, $user->name, $user->points, $prize_array);
@@ -383,7 +446,7 @@ function fah_award_prizes($pdo, $name, $score, $prize_array)
 {
     $safe_name = htmlspecialchars($name, ENT_QUOTES);
     $lower_name = strtolower($name);
-    
+
     try {
         if (isset($prize_array[$lower_name])) {
             $row = $prize_array[$lower_name];
@@ -412,7 +475,7 @@ function fah_award_prizes($pdo, $name, $score, $prize_array)
         // get information from pr2, rank_tokens, and folding_at_home
         $hat_array = explode(',', pr2_select($pdo, $user_id)->hat_array);
         $rank_token_row = rank_token_select($pdo, $user_id);
-        
+
         // avoid getting object of false
         if ($rank_token_row !== false) {
             $available_tokens = (int) $rank_token_row->available_tokens;

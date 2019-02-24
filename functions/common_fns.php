@@ -7,8 +7,8 @@ function query_if_banned($pdo, $user_id, $ip)
     if (!function_exists('ban_select')) {
         require_once QUERIES_DIR . '/bans.php';
     }
-    $ban = (isset($user_id) && $user_id != 0) ? ban_select_active_by_user_id($pdo, $user_id) : false; // user_id
-    $ban = (!$ban && isset($ip)) ? ban_select_active_by_ip($pdo, $ip) : false; // ip if user_id isn't found
+    $ban = isset($user_id) && $user_id != 0 ? ban_select_active_by_user_id($pdo, $user_id) : false; // user_id
+    $ban = !$ban && isset($ip) ? ban_select_active_by_ip($pdo, $ip) : $ban; // ip if user_id isn't found
     return $ban;
 }
 
@@ -100,6 +100,21 @@ function is_obscene($str)
         }
     }
     return $obsene;
+}
+
+
+// checks if a string is empty (includes a variety of checks)
+function is_empty($str, $incl_zero = true)
+{
+    if (strlen(trim($str)) === 0 || !isset($str)) { // if the string length is 0 or it isn't set
+        return true;
+    } elseif ($incl_zero === true && empty($str) && $str != '0') { // if the string is empty and not 0, it's empty
+        return true;
+    } elseif (empty($str)) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 

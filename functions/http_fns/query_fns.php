@@ -72,6 +72,24 @@ function token_login($pdo, $use_cookie = true, $suppress_error = false)
 }
 
 
+// registers a user
+function do_register_user($pdo, $name, $password, $ip, $time, $email)
+{
+    // user insert
+    $pass_hash = to_hash($password);
+    unset($password); // don't keep pass in memory
+    user_insert($pdo, $name, $pass_hash, $ip, $time, $email);
+    unset($pass_hash); // don't keep hash in memory
+
+    // pr2 insert
+    $user_id = name_to_id($pdo, $name);
+    pr2_insert($pdo, $user_id);
+
+    // welcome them
+    message_send_welcome($pdo, $name, $user_id);
+}
+
+
 // -- MESSAGES -- \\
 
 // sends a PM
@@ -332,7 +350,7 @@ function generate_level_list($pdo, $mode)
         $str = format_level_list(array_slice($levels, $j * 9, 9));
         $filename = $dir . ($j + 1);
         $ret = file_put_contents($filename, $str);
-        if (!$ret) {
+        if ($ret === false) {
             throw new Exception("Could not write level list to $filename.");
         }
     }
@@ -376,21 +394,22 @@ function check_moderator($pdo, $user_id = null, $check_ref = true, $min_power = 
 // determine if a user is a staff member and returns which groups
 function is_staff($pdo, $user_id, $check_ref = true, $exception = false, $group = 2)
 {
+    $is_mod = $is_admin = false;
+
     if ($check_ref === true) {
         require_trusted_ref('', true);
     }
 
-    $is_mod = false;
-    $is_admin = false;
+    if ($user_id !== false && $user_id !== 0) {
+        // determine power and if staff
+        $power = (int) user_select_power($pdo, $user_id, true);
+        $is_mod = ($power >= 2);
+        $is_admin = ($power === 3);
 
-    // determine power and if staff
-    $power = (int) user_select_power($pdo, $user_id, true);
-    $is_mod = ($power >= 2);
-    $is_admin = ($power === 3);
-
-    // exception handler
-    if ($exception === true && ($is_mod === false || ($group > 2 && $is_admin === false))) {
-        throw new Exception('You lack the power to access this resource.');
+        // exception handler
+        if ($exception === true && ($is_mod === false || ($group > 2 && $is_admin === false))) {
+            throw new Exception('You lack the power to access this resource.');
+        }
     }
 
     // tell the world

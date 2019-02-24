@@ -3,7 +3,7 @@
 require_once GEN_HTTP_FNS;
 require_once QUERIES_DIR . '/all_optimize.php';
 require_once QUERIES_DIR . '/bans.php';
-require_once QUERIES_DIR . '/best_levels/best_levels_reset.php';
+require_once QUERIES_DIR . '/best_levels.php';
 require_once QUERIES_DIR . '/level_backups.php';
 require_once QUERIES_DIR . '/messages.php';
 require_once QUERIES_DIR . '/new_levels.php';
@@ -27,6 +27,8 @@ all_optimize($pdo, $DB_NAME);
 
 // deletes old accounts every four weeks
 if (date('W') % 4 === 0) {
+    require_once FNS_DIR . '/cron/cron_fns.php';
+    require_once QUERIES_DIR . '/user_delete.php';
     delete_old_accounts($pdo);
 }
 

@@ -75,6 +75,8 @@ function is_trusted_ref()
     $ref = $_SERVER['HTTP_REFERER'];
     return (strpos($ref, 'http://pr2hub.com/') === 0
         || strpos($ref, 'https://pr2hub.com/') === 0
+        || strpos($ref, 'http://www.pr2hub.com/') === 0
+        || strpos($ref, 'https://www.pr2hub.com/') === 0
         || strpos($ref, 'http://cdn.jiggmin.com/') === 0
         || strpos($ref, 'http://chat.kongregate.com/') === 0
         || strpos($ref, 'http://external.kongregate-games.com/gamez/') === 0
@@ -127,6 +129,17 @@ function send_email($from, $to, $subject, $body)
 
 
 // -- DATA HANDLERS -- \\
+
+// sorts by $obj->time
+function sort_by_obj_time($a, $b)
+{
+    if ($a->time === $b->time) {
+        return 0;
+    }
+
+    return $a->time > $b->time ? -1 : 1;
+}
+
 
 // check if player has an epic color option for a part
 function test_epic($color, $arr_str, $part)
@@ -246,21 +259,6 @@ function check_value($value, $check_for, $yes = 'yes', $no = 'no')
 }
 
 
-// checks if a string is empty (includes a variety of checks)
-function is_empty($str, $incl_zero = true)
-{
-    if (strlen(trim($str)) === 0 || !isset($str)) { // if the string length is 0 or it isn't set
-        return true;
-    } elseif ($incl_zero === true && empty($str) && $str != '0') { // if the string is empty and not 0, it's empty
-        return true;
-    } elseif (empty($str)) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-
 // checks if an email address is valid
 function valid_email($email)
 {
@@ -307,7 +305,7 @@ function format_level_list($levels)
         $num++;
     }
 
-    if (!empty(str)) {
+    if (!is_empty($str)) {
         $hash = md5($str . $LEVEL_LIST_SALT);
         $str .= '&hash='.$hash;
     }
