@@ -29,4 +29,4 @@ To submit new ideas, post a thread in the [PR2 Suggestions](https://jiggmin2.com
 - [Grovbi](https://github.com/Grovbi)
 - [Stxtics](https://github.com/Stxtics)
 - [isokissa3](https://github.com/isokissa3)
-- [Shane1334](https://github.com/Shane1334)
+- [Shane1334](https://github.com/ProPlayzBlitzCrank)
